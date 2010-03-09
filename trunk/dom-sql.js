@@ -2,6 +2,8 @@
 
 DOM Storage Query Language
 A SQL inspired interface for working with DOM Storage
+Copyright (c) 2010 Pete Boere - pete@the-echoplex.net
+MIT style license - http://www.opensource.org/licenses/mit-license.php
 
 */
 (function () {
