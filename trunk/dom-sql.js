@@ -113,7 +113,7 @@ var inArray = function ( obj, arr ) {
 		if ( !_currentTable && createIfNotExist ) {
 			_currentTable = _data[ path.storage ].tables[ path.table ] = {rows:_createDataset(),fields:{},auto_inc:0};
 		}
-		else {
+		else if ( _currentTable ) {
 			_createDataset( _currentTable.rows );
 		}
 		return _currentTable;
