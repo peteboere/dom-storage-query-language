@@ -469,6 +469,7 @@ win.DomSQL = {
 			_currentTable.rows.push( _validateRow( row ) );
 		}
 		_commit();
+		return _currentTable.rows;
 	},
 	
 	query: function ( dql ) {
