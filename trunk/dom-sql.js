@@ -78,10 +78,11 @@ var inArray = function ( obj, arr ) {
 // Shortcuts
 	win = window,
 	local = win.localStorage,
-	// Throws an error in FF if you try to access offline 
+	// Throws an error in FF if you try to access offline. Chrome (4) does not support sessionStorage 
 	session = function () {
-		try { return win.sessionStorage }
-		catch ( ex ) { return {}; }
+		var sess;
+		try { sess = win.sessionStorage } catch ( ex ) { return {} }
+		return sess || {}; 
 	}(),
 
 	// Default to localStorage
