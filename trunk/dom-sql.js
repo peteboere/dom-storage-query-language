@@ -65,12 +65,7 @@ var inArray = function ( obj, arr ) {
 			literals: literals,
 			prefix: prefix,
 			match: function ( test ) {
-				if ( test in literals ) {
-					var value = literals[ test ];
-					delete literals[ test ];
-					return value;
-				} 
-				return test;
+				return ( test in literals ) ? literals[ test ] : test;
 			}
 		};
 	},
@@ -186,7 +181,7 @@ var inArray = function ( obj, arr ) {
 					result = +result;
 				}
 				else {	
-					var	parts = tokens[i].split( '#' );					
+					var	parts = tokens[i].split( '#' );
 					// Restore literals
 					parts[2] = feed.extract.match( parts[2] ); // ['id', '<', '123']
 					// Do comparison
