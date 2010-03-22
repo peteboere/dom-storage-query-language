@@ -129,7 +129,7 @@ var inArray = function ( obj, arr ) {
 	// Create hash of reserved keywords and compiled RegEx patterns
 	_keywords = function () {
 		var res = {};
-		each( 'SELECT,ORDERBY,DESC,ASC,INSERT INTO,UPDATE,SET,WHERE,AND,OR,DELETE FROM,LIMIT,VALUES'.
+		each( 'SELECT,ORDER BY,DESC,ASC,INSERT INTO,UPDATE,SET,WHERE,AND,OR,DELETE FROM,LIMIT,VALUES'.
 			split(','), function ( it ) {
 			res[ it ] = new RegExp( '(^|\\b)'+it+'($|\\b)', 'gi' );
 		});
@@ -308,8 +308,8 @@ var inArray = function ( obj, arr ) {
 					result.push( row );
 				}
 			});
-			// ORDERBY
-			if ( tokens[0] === 'ORDERBY' ) {
+			// ORDER BY
+			if ( tokens[0] === 'ORDER_BY' ) {
 				tokens.shift(); 
 				var args = tokens.shift().split( ',' ),
 					index = 0,
@@ -416,13 +416,11 @@ win.DomSQL = {
 		// Loop table schema
 		each( fields || [], function ( field ) {
 			var extract = extractLiterals( field ),
-				parts = extract.string.replace( /\s*([=])\s*/gi, '$1' ).split( ' ' ),
-				field = _currentTable.fields[ parts.shift() ] = {};
-			parts.each( function ( part ) {
-				var tokens = part.split( '=' ),
-				 	keyword = tokens[0].toLowerCase(),
-					value = extract.match( tokens[1] );
-				switch ( keyword ) {
+				parts = extract.string.replace( /\s+/g, ' ' ).split( ' ' ),
+				field = _currentTable.fields[ parts.shift() ] = {},
+				token;
+			while ( token = parts.shift() ) {
+				switch ( token.toLowerCase() ) {
 					case 'auto_inc': 
 						field.auto_inc = true;
 						break;
@@ -430,9 +428,9 @@ win.DomSQL = {
 						field.timestamp = true;
 						break;
 					case 'default': 
-						field.def = value;
+						field.def = extract.match( parts.shift() );
 				}
-			});
+			} 
 		});
 		_commit();
 	},
@@ -488,10 +486,10 @@ win.DomSQL = {
 			if ( tokens[i] === 'WHERE' ) {
 				tokens.splice( i, 1 );
 				// 'id<123' 'AND' 'some=12'
-				// 'id<123' 'AND' 'some=12' 'orderby' 'date' 'asc' 'limit' '10'
+				// 'id<123' 'AND' 'some=12' 'order_by' 'date' 'asc' 'limit' '10'
 				while ( token = tokens.splice( i, 1 )[0] ) {
 					where.push( token );					
-					if ( tokens[0] && /^(ORDERBY|LIMIT)$/.test( tokens[0] ) ) {
+					if ( tokens[0] && /^(ORDER_BY|LIMIT)$/.test( tokens[0] ) ) {
 						break;
 					}
 				}
