@@ -2,43 +2,43 @@
 
 DOM Storage Query Language
 A SQL inspired interface for working with DOM Storage
-Copyright (c) 2010 Pete Boere - pete@the-echoplex.net
+Copyright (c) 2010-2011 Pete Boere - pete@the-echoplex.net
 MIT style license - http://www.opensource.org/licenses/mit-license.php
 
 */
 (function () {
 
-if ( !( 'localStorage' in window ) ) {
+if ( !( 'localStorage' in window ) && !window.JSON ) {
 	return;
 }
 
 // Helpers
-var inArray = function ( obj, arr ) { 
+var inArray = function ( obj, arr ) {
 		for ( var i = 0; i < arr.length; i++ ) {
 			if ( arr[i] === obj ) {
 				return true;
-			} 
-		} 
+			}
+		}
 		return false;
 	},
 	toArray = function ( obj ) {
 		var result = [], n = obj.length, i = 0;
-		for ( i; i < n; i++ ) { 
-			result[i] = obj[i]; 
+		for ( i; i < n; i++ ) {
+			result[i] = obj[i];
 		}
 		return result;
 	},
 	each = function ( obj, callback ) {
 		if ( {}.toString.call( obj ) === '[object Object]' ) {
-			for ( var key in obj ) { 
-				callback.call( obj, key, obj[ key ] ); 
+			for ( var key in obj ) {
+				callback.call( obj, key, obj[ key ] );
 			}
 		}
 		else if ( obj.length ) {
-			for ( var i = 0; i < obj.length; i++ ) { 
-				callback.call( obj, obj[ i ], i ); 
+			for ( var i = 0; i < obj.length; i++ ) {
+				callback.call( obj, obj[ i ], i );
 			}
-		}		
+		}
 	},
 	keys = function ( obj ) {
 		var result = [], key;
@@ -49,21 +49,43 @@ var inArray = function ( obj, arr ) {
 		}
 		return result;
 	},
-	extractLiterals = function ( str, prefix ) {
-		var literals = {}, 
-			prefix = prefix || 'LIT',
+	extractLiterals = function ( str, subs ) {
+		var literals = {},
+			prefix = 'LIT',
 			counter = 0,
 			label,
-			m; 
-		while ( m = /('|")(?:\\1|[^\1])*?\1/.exec( str ) ) {	
+			m;
+		while ( m = /('|")(?:\\1|[^\1])*?\1/.exec( str ) ) {
 			label = '_' + prefix + ( ++counter ) + '_';
 			literals[ label ] = m[0].substring( 1, m[0].length-1 );
 			str = str.substring( 0, m.index ) + label + str.substring( m.index + m[0].length );
 		}
+		
+		// Apply any substitutions
+		if ( subs ) {
+			var test = {}.toString.call( subs );
+			if ( test === '[object Object]' ) {
+				each( subs, function ( key, value ) {
+					if ( str.indexOf( ':' + key ) !== -1 ) {
+						var patt = new RegExp( '\\:' + key + '\\b' ),
+							label = '_' + prefix + ( ++counter ) + '_';
+						literals[ label ] = value;
+						str = str.replace( patt, label );
+					}
+				});
+			}
+			else if ( test === '[object Array]' ) {
+				while ( str.indexOf( '?' ) !== -1 ) {
+					var label = '_' + prefix + ( ++counter ) + '_';
+					literals[ label ] = subs.shift();
+					str = str.replace( /\?/, label );
+				}
+			}
+		}
+
 		return {
 			string: str,
 			literals: literals,
-			prefix: prefix,
 			match: function ( test ) {
 				return ( test in literals ) ? literals[ test ] : test;
 			}
@@ -73,23 +95,23 @@ var inArray = function ( obj, arr ) {
 // Shortcuts
 	win = window,
 	local = win.localStorage,
-	// Throws an error in FF if you try to access offline. Chrome (4) does not support sessionStorage 
+	// Throws an error in FF if you try to access offline. Chrome (4) does not support sessionStorage
 	session = function () {
 		var sess;
 		try { sess = win.sessionStorage } catch ( ex ) { return {} }
-		return sess || {}; 
+		return sess || {};
 	}(),
 
 	// Default to localStorage
 	_defaultStorage = 'local',
-	
+
 	_currentTable = null,
-	
+
 	_data = {
 		local: local.DomSQL ? JSON.parse( local.DomSQL ) : {tables:{}},
 		session: session.DomSQL ? JSON.parse( session.DomSQL ) : {tables:{}}
 	},
-	
+
 	// Parse a path argument, i.e 'local.foo'
 	_getPath = function ( path ) {
 		var parts = path.split( '.' ),
@@ -98,10 +120,10 @@ var inArray = function ( obj, arr ) {
 		if ( parts.length > 1 ) {
 			storage = parts[0];
 			table = parts[1];
-		}		
+		}
 		return { storage: storage, table: table };
 	},
-	
+
 	// Map path argument to a table object, also for creating new table objects
 	_getTable = function ( path, createIfNotExist ) {
 		var path = _getPath( path );
@@ -114,13 +136,13 @@ var inArray = function ( obj, arr ) {
 		}
 		return _currentTable;
 	},
-	
+
 	// Serialize and store data
 	_commit = function () {
 		local.DomSQL = JSON.stringify( _data.local );
 		session.DomSQL = JSON.stringify( _data.session );
 	},
-	
+
 	// Create hash of reserved keywords and compiled RegEx patterns
 	_keywords = function () {
 		var res = {};
@@ -130,10 +152,10 @@ var inArray = function ( obj, arr ) {
 		});
 		return res;
 	}(),
-	
+
 	// Normalize passed in argument
-	_parseQuery = function ( dql ) {
-		var extract = extractLiterals( dql ),
+	_parseQuery = function ( dql, subs ) {
+		var extract = extractLiterals( dql, subs ),
 			dql = extract.string.
 				// Remove space around modifiers
 				replace( /\s*([^a-z0-9_()* ]+)\s*/gi, '$1' ).
@@ -150,26 +172,26 @@ var inArray = function ( obj, arr ) {
 			var m = patt.exec( dql );
 			patt.lastIndex = 0
 			if ( m ) {
-				dql = dql.substring( 0, m.index ) + 
-					m[0].toUpperCase().replace( /\s/g, '_' ) + 
+				dql = dql.substring( 0, m.index ) +
+					m[0].toUpperCase().replace( /\s/g, '_' ) +
 					dql.substring( m.index + m[0].length );
 			}
 		});
 		return {
 			extract: extract,
 			tokens: dql.split( ' ' )
-		}; 
+		};
 	},
-	
+
 	_comp = {
-		'=' : function ( a, b ) { return a == b; }, 
-		'>' : function ( a, b ) { return a > b; },
+		'='  : function ( a, b ) { return a == b; },
+		'>'  : function ( a, b ) { return a > b; },
 		'>=' : function ( a, b ) { return a >= b; },
-		'<' : function ( a, b ) { return a < b; },
+		'<'  : function ( a, b ) { return a < b; },
 		'<=' : function ( a, b ) { return a <= b; },
-		'!=': function ( a, b ) { return a != b; }
+		'!=' : function ( a, b ) { return a != b; }
 	},
-	
+
 	// Evaluate WHERE/AND/OR clauses, handle nested expressions
 	_evalWhere = function ( clause, row, feed ) {
 		var evaluate = function ( str ) {
@@ -180,14 +202,14 @@ var inArray = function ( obj, arr ) {
 				if ( /^[01]$/.test( result ) ) {
 					result = +result;
 				}
-				else {	
+				else {
 					var	parts = tokens[i].split( '#' );
 					// Restore literals
 					parts[2] = feed.extract.match( parts[2] ); // ['id', '<', '123']
 					// Do comparison
 					result = _comp[ parts[1] ]( row[ parts[0] ], parts[2] );
 				}
-				// Success 
+				// Success
 				if ( result && ( !logicalNext || logicalNext === 'OR' ) ) {
 					return true;
 				}
@@ -197,34 +219,34 @@ var inArray = function ( obj, arr ) {
 				}
 				if ( logicalNext ) {
 					i++;
-				} 
+				}
 			}
 		};
 		// Deal with braced expressions
-		if ( clause.indexOf( '(' ) !== -1 ) { 		
-			var parensPatt = /\(([^\)]+)\)/g, m;			
+		if ( clause.indexOf( '(' ) !== -1 ) {
+			var parensPatt = /\(([^\)]+)\)/g, m;
 			while ( clause.indexOf( '(' ) !== -1 ) {
 				parensPatt.lastIndex = clause.lastIndexOf( '(' );
 				m = parensPatt.exec( clause );
-				clause = clause.substring( 0, m.index ) + 
-					// Cast result to 1 or 0 
-					( +evaluate( m[1] ) ) + 
-					clause.substring( m.index + m[0].length ); 
+				clause = clause.substring( 0, m.index ) +
+					// Cast result to 1 or 0
+					( +evaluate( m[1] ) ) +
+					clause.substring( m.index + m[0].length );
 			}
 		}
 		return evaluate( clause );
 	},
-	
+
 	// If a table schema is defined, make rows comply to it
 	_validateRow = function ( row ) {
 		var fields = _currentTable.fields;
 		// If no fields are defined in the schema, just return the row
-		if ( !keys( fields ).length ) { 
+		if ( !keys( fields ).length ) {
 			return row;
 		}
 		// Schema defined fields
 		each( fields, function ( field, meta ) {
-			// Schema fields with attributes 
+			// Schema fields with attributes
 			if ( keys( meta ).length ) {
 				each( meta, function ( attr, value ) {
 					if ( value ) {
@@ -232,12 +254,12 @@ var inArray = function ( obj, arr ) {
 							switch ( attr ) {
 								case 'auto_inc': return ++_currentTable.auto_inc;
 								case 'timestamp': return +(new Date);
-								case 'def': 
+								case 'def':
 									if ( !( field in row ) ) {
 										return value;
 									}
 							}
-						}();					
+						}();
 					}
 				});
 			}
@@ -250,11 +272,11 @@ var inArray = function ( obj, arr ) {
 		each( row, function ( name ) {
 			if ( !( name in fields ) ) {
 				delete row[ name ];
-			}			
-		}); 
+			}
+		});
 		return row;
 	},
-	
+
 	// Sugar for handling result sets
 	_sugarMethods = {
 		each: function ( func ) {
@@ -278,25 +300,25 @@ var inArray = function ( obj, arr ) {
 			}
 		}
 	},
-	
+
 	// Binds sugar methods to datasets and optionally creates them
 	_createDataset = function ( rows ) {
 		var dataset = rows || [];
 		each( _sugarMethods, function ( name, method ) {
-			dataset[ name ] = method;	
+			dataset[ name ] = method;
 		});
 		return dataset;
 	},
-	
+
 	_commandParsers = {
-		
+
 		'SELECT': function ( feed ) {
 			var tokens = feed.tokens,
 				rows = _currentTable.rows,
 				fields = feed.args === '*' ? '*' : feed.args.split( ',' ),
 				result = [],
 				i = 0;
-				
+
 			// WHERE
 			each( _currentTable.rows, function ( row ) {
 				if ( !feed.where || _evalWhere( feed.where, row, feed ) ) {
@@ -305,7 +327,7 @@ var inArray = function ( obj, arr ) {
 			});
 			// ORDER BY
 			if ( tokens[0] === 'ORDER_BY' ) {
-				tokens.shift(); 
+				tokens.shift();
 				var args = tokens.shift().split( ',' ),
 					index = 0,
 					sortKind = 'ASC',
@@ -314,14 +336,14 @@ var inArray = function ( obj, arr ) {
 						'DESC': function ( a, b ) { return a[ args[ index ] ] < b[ args[ index ] ]; }
 					},
 					sorter = function ( a, b ) {
-						if ( a[ args[ index ] ] === b[ args[ index ] ] ) { 
+						if ( a[ args[ index ] ] === b[ args[ index ] ] ) {
 							if ( args[ index+1 ] ) {
 								index++;
 								return sorter( a, b );
 							}
 							index = 0;
-							return 0; 
-						} 
+							return 0;
+						}
 						var result = sortComp[ sortKind ]( a, b ) ? 1 : -1;
 						index = 0;
 						return result;
@@ -342,24 +364,28 @@ var inArray = function ( obj, arr ) {
 					for ( field in row ) {
 						if ( !inArray( field, fields ) ) {
 							delete row[ field ];
-						}				
-					} 
+						}
+					}
 				});
 			}
 			return _createDataset( result );
 		},
-		
+
 		'DELETE_FROM': function ( feed ) {
-			var dataset = _currentTable.rows;
-			each( dataset, function ( row, i ) {
+			var newSet = [];
+			each( _currentTable.rows, function ( row, i ) {
 				if ( !feed.where || _evalWhere( feed.where, row, feed ) ) {
-					dataset.splice( i, 1 );
+					// console.log( 'skip' );
+				}
+				else {
+					newSet.push( row );
 				}
 			});
+			_currentTable.rows = newSet;
 			_commit();
-			return dataset;
+			return  _currentTable.rows;
 		},
-		
+
 		'UPDATE': function ( feed ) {
 			feed.tokens.shift();
 			var dataset = _currentTable.rows,
@@ -367,7 +393,7 @@ var inArray = function ( obj, arr ) {
 					var result = {};
 					each( feed.tokens.shift().split( ',' ), function ( part ) {
 						var parts = part.split( '#' );
-						result[ parts[0] ] = feed.extract.match( parts[2] ); 
+						result[ parts[0] ] = feed.extract.match( parts[2] );
 					});
 					return result;
 				}();
@@ -376,15 +402,15 @@ var inArray = function ( obj, arr ) {
 					each( updates, function ( name, value ) {
 						row[ name ] = value;
 					});
-				} 
+				}
 			});
 			_commit();
 			return dataset;
 		},
-		
+
 		'INSERT_INTO': function ( feed ) {
 			var fields = feed.tokens.shift().replace( /[()]/g, '' ).split( ',' ),
-				values = feed.tokens.pop().replace( /[()]/g, '' ).split( ',' ), 
+				values = feed.tokens.pop().replace( /[()]/g, '' ).split( ',' ),
 				dataset = _currentTable.rows,
 				row = {};
 			// Restore any literal values
@@ -400,11 +426,11 @@ var inArray = function ( obj, arr ) {
 
 // Public methods
 win.DomSQL = {
-	
+
 	// Define a table schema, if table is already defined does nothing
 	defineTable: function ( path, fields ) {
 		if ( this.tableExists( path ) ) {
-			return;			
+			return;
 		}
 		// Create empty table
 		_getTable( path, true );
@@ -416,66 +442,64 @@ win.DomSQL = {
 				token;
 			while ( token = parts.shift() ) {
 				switch ( token.toLowerCase() ) {
-					case 'auto_inc': 
+					case 'auto_inc':
 						field.auto_inc = true;
 						break;
-					case 'timestamp': 
+					case 'timestamp':
 						field.timestamp = true;
 						break;
-					case 'default': 
+					case 'default':
 						field.def = extract.match( parts.shift() );
 				}
-			} 
+			}
 		});
 		_commit();
 	},
-	
+
 	tableExists: function ( tableName ) {
 		return !!_getTable( tableName );
 	},
-	
+
 	showTables: function () {
 		var out = [];
 		out.push( '[local]' );
 		each( _data.local.tables, function ( table ) {
 			out.push( '\t' + table );
-		}); 
+		});
 		out.push( '[session]' );
 		each( _data.session.tables, function ( table ) {
 			out.push( '\t' + table );
 		});
 		return out.join( '\n' );
 	},
-	
+
 	dropTable: function ( path ) {
 		var path = _getPath( path );
 		delete _data[ path.storage ].tables[ path.table ];
 		_commit();
 	},
-	
+
 	// Convenient alternative for stuffing data into tables
 	insert: function ( tableName, args ) {
-		var args = toArray( arguments ),
-			row;
-		args.shift();
+		var row;
 		_getTable( tableName, true );
-		while( row = args.shift() ) { 
+		while( row = args.shift() ) {
 			_currentTable.rows.push( _validateRow( row ) );
 		}
 		_commit();
 		return _currentTable.rows;
 	},
-	
-	query: function ( dql ) {
-		var feed = _parseQuery( dql ),
+
+	query: function ( dql, subs ) {
+		var feed = _parseQuery( dql, subs ),
 			tokens = feed.tokens,
 			command = tokens.shift();
 		if ( command === 'SELECT' ) {
 			feed.args = tokens.shift();
 			tokens.shift();
-		}	
+		}
 		_getTable( tokens.shift(), true );
-		// Extract WHERE/AND/OR clauses 
+		// Extract WHERE/AND/OR clauses
 		var where = [],	i = 0, token;
 		for ( i; i < tokens.length; i++ ) {
 			if ( tokens[i] === 'WHERE' ) {
@@ -483,7 +507,7 @@ win.DomSQL = {
 				// 'id<123' 'AND' 'some=12'
 				// 'id<123' 'AND' 'some=12' 'order_by' 'date' 'asc' 'limit' '10'
 				while ( token = tokens.splice( i, 1 )[0] ) {
-					where.push( token );					
+					where.push( token );
 					if ( tokens[0] && /^(ORDER_BY|LIMIT)$/.test( tokens[0] ) ) {
 						break;
 					}
@@ -494,14 +518,14 @@ win.DomSQL = {
 		feed.where = where.join( ' ' );
 		return _commandParsers[ command ]( feed );
 	},
-	
+
 	useLocal: function () {
 		_defaultStorage = 'local';
 	},
-	
+
 	useSession: function () {
 		_defaultStorage = 'session';
 	}
 };
 
-})();	
+})();
